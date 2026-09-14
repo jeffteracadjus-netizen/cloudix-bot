@@ -2,7 +2,7 @@ services:
   - type: web
     name: cloudix-bot
     runtime: node
-    plan: starter
+    plan: free
 
     buildCommand: npm install
     startCommand: npm start
@@ -15,9 +15,4 @@ services:
         value: 10000
 
       - key: AUTH_FOLDER
-        value: /data/auth
-
-    disk:
-      name: cloudix-bot-data
-      mountPath: /data
-      sizeGB: 1
+        value: /tmp/auth
