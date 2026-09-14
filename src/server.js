@@ -117,6 +117,49 @@ async function connectToWhatsApp() {
 
   sock.ev.on('creds.update', saveCreds);
 
+  // Adicione esta linha no topo do arquivo (junto com as outras variáveis globais)
+const processedMessages = new Set();
+
+// ... dentro da função connectToWhatsApp():
+
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+
+    for (const msg of messages) {
+      if (msg.key.fromMe || msg.key.remoteJid.endsWith('@g.us')) continue;
+
+      // EVITA DUPLICIDADE: Ignora se a mensagem já foi processada
+      if (processedMessages.has(msg.key.id)) continue;
+      processedMessages.add(msg.key.id);
+
+      // Limpa mensagens antigas do cache para poupar memória
+      if (processedMessages.size > 500) {
+        const firstKey = processedMessages.values().next().value;
+        processedMessages.delete(firstKey);
+      }
+
+      const sender = msg.key.remoteJid;
+      const text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || '').trim().toLowerCase();
+
+      if (!text) continue;
+
+      if (text === '!menu' || text === 'menu') {
+        const menuText = "*📌 MENU PRINCIPAL*\n\n1️⃣ !suporte - Falar com a equipe\n2️⃣ !ping - Testar resposta\n3️⃣ !info - Informações do sistema";
+        await sock.sendMessage(sender, { text: menuText });
+      } else if (text === '!suporte') {
+        await sock.sendMessage(sender, { text: 'Um atendente analisará sua solicitação em breve.' });
+      } else if (text === '!ping') {
+        await sock.sendMessage(sender, { text: '🏓 Pong! Bot ativo e respondendo.' });
+      } else if (text === '!info') {
+        await sock.sendMessage(sender, { text: '🤖 Bot rodando no Render + PostgreSQL (Neon).' });
+      } else {
+        await sock.sendMessage(sender, { 
+          text: 'Olá! Digite *!menu* para ver as opções disponíveis.' 
+        });
+      }
+    }
+  });
+  
   // Passo 3: Lógica de Comandos
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
