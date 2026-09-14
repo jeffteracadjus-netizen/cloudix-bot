@@ -161,11 +161,9 @@ function normalizeText(text) {
 async function handleMessage(sock, message) {
   try {
     if (!message.message) return;
-
     if (message.key.fromMe) return;
 
     const remoteJid = message.key.remoteJid;
-
     if (!remoteJid) return;
 
     const messageContent =
@@ -176,18 +174,10 @@ async function handleMessage(sock, message) {
     if (!messageContent) return;
 
     const text = normalizeText(messageContent);
-
     console.log(`📩 Mensagem recebida: ${text}`);
 
     let state = userStates.get(remoteJid) || "main";
-
     let response;
-
-    /*
-    ==========================================
-    COMANDOS GLOBAIS
-    ==========================================
-    */
 
     if (
       text === "menu" ||
@@ -200,134 +190,75 @@ async function handleMessage(sock, message) {
       text === "boa noite"
     ) {
       userStates.set(remoteJid, "main");
-
       response = getMainMenu();
 
-      await sock.sendMessage(remoteJid, {
-        text: response
-      });
-
+      await sock.sendMessage(remoteJid, { text: response });
       console.log(`📤 Resposta enviada para ${remoteJid}`);
       return;
     }
 
-    /*
-    ==========================================
-    MENU PRINCIPAL
-    ==========================================
-    */
-
     if (state === "main") {
-
       switch (text) {
-
         case "1":
         case "planos":
         case "plano":
         case "solucoes":
         case "solucao":
-
           userStates.set(remoteJid, "solutions");
-
           response = getPlans();
           break;
-
         case "2":
         case "especialista":
         case "vendedor":
         case "vendas":
-
           userStates.set(remoteJid, "specialist");
-
           response = getSpecialist();
           break;
-
         case "3":
         case "suporte":
         case "ajuda":
-
           userStates.set(remoteJid, "support");
-
           response = getSupport();
           break;
-
         default:
-
           response = getUnknownOption();
       }
-    }
-
-    /*
-    ==========================================
-    MENU DE SOLUÇÕES
-    ==========================================
-    */
-
-    else if (state === "solutions") {
-
+    } else if (state === "solutions") {
       switch (text) {
-
         case "1":
         case "cloudix ai":
         case "ia":
         case "inteligencia artificial":
-
           userStates.set(remoteJid, "cloudix_ai");
-
           response = getCloudixAI();
           break;
-
         case "2":
         case "automacao":
-
           userStates.set(remoteJid, "automation");
-
           response = getAutomation();
           break;
-
         case "3":
         case "marketing":
         case "conteudo":
-
           userStates.set(remoteJid, "marketing");
-
           response = getMarketing();
           break;
-
         case "4":
         case "atendimento":
-
           userStates.set(remoteJid, "service");
-
           response = getService();
           break;
-
         case "0":
         case "voltar":
-
           userStates.set(remoteJid, "main");
-
           response = getMainMenu();
           break;
-
         default:
-
           response = getPlans();
       }
-    }
-
-    /*
-    ==========================================
-    CLOUDIX AI
-    ==========================================
-    */
-
-    else if (state === "cloudix_ai") {
-
+    } else if (state === "cloudix_ai") {
       switch (text) {
-
         case "1":
-
           response = `🚀 *CLOUDIX AI*
 
 A CLOUDIX pode desenvolver uma solução de inteligência artificial personalizada para sua empresa.
@@ -337,65 +268,35 @@ Para entender o que sua empresa precisa, vamos encaminhar você para um especial
 Digite *2* para falar com um especialista.
 
 Digite *0* para voltar às soluções.`;
-
           break;
-
         case "2":
-
           userStates.set(remoteJid, "specialist");
-
           response = getSpecialist();
-
           break;
-
         case "0":
-
           userStates.set(remoteJid, "solutions");
-
           response = getPlans();
-
           break;
-
         default:
-
           response = getCloudixAI();
       }
-    }
-
-    /*
-    ==========================================
-    OUTRAS SOLUÇÕES
-    ==========================================
-    */
-
-    else if (
+    } else if (
       state === "automation" ||
       state === "marketing" ||
       state === "service"
     ) {
-
       switch (text) {
-
         case "2":
         case "especialista":
-
           userStates.set(remoteJid, "specialist");
-
           response = getSpecialist();
-
           break;
-
         case "0":
         case "voltar":
-
           userStates.set(remoteJid, "solutions");
-
           response = getPlans();
-
           break;
-
         default:
-
           if (state === "automation") {
             response = getAutomation();
           } else if (state === "marketing") {
@@ -404,64 +305,33 @@ Digite *0* para voltar às soluções.`;
             response = getService();
           }
       }
-    }
-
-    /*
-    ==========================================
-    ESPECIALISTA
-    ==========================================
-    */
-
-    else if (state === "specialist") {
-
-  if (text === "0" || text === "voltar") {
-
-    userStates.set(remoteJid, "main");
-    userLeads.delete(remoteJid);
-
-    response = getMainMenu();
-
-  } else {
-
-    userLeads.set(remoteJid, {
-      name: message.message.conversation ||
-        message.message.extendedTextMessage?.text ||
-        ""
-    });
-
-    userStates.set(remoteJid, "specialist_company");
-
-    response = `🏢 *PERFEITO!*
+    } else if (state === "specialist") {
+      if (text === "0" || text === "voltar") {
+        userStates.set(remoteJid, "main");
+        userLeads.delete(remoteJid);
+        response = getMainMenu();
+      } else {
+        userLeads.set(remoteJid, {
+          name: messageContent
+        });
+        userStates.set(remoteJid, "specialist_company");
+        response = `🏢 *PERFEITO!*
 
 Agora, qual é o nome da sua empresa?
 
 Digite o nome da empresa ou *0* para voltar ao menu.`;
-  }
-}
-
-else if (state === "specialist_company") {
-
-  if (text === "0" || text === "voltar") {
-
-    userStates.set(remoteJid, "main");
-    userLeads.delete(remoteJid);
-
-    response = getMainMenu();
-
-  } else {
-
-    const lead = userLeads.get(remoteJid);
-
-    lead.company =
-      message.message.conversation ||
-      message.message.extendedTextMessage?.text ||
-      "";
-
-    userLeads.set(remoteJid, lead);
-
-    userStates.set(remoteJid, "specialist_need");
-
-    response = `🎯 *ÓTIMO!*
+      }
+    } else if (state === "specialist_company") {
+      if (text === "0" || text === "voltar") {
+        userStates.set(remoteJid, "main");
+        userLeads.delete(remoteJid);
+        response = getMainMenu();
+      } else {
+        const lead = userLeads.get(remoteJid);
+        lead.company = messageContent;
+        userLeads.set(remoteJid, lead);
+        userStates.set(remoteJid, "specialist_need");
+        response = `🎯 *ÓTIMO!*
 
 Agora conte para nós:
 
@@ -470,32 +340,18 @@ Agora conte para nós:
 Pode explicar com suas próprias palavras.
 
 Digite *0* para voltar ao menu.`;
-  }
-}
-
-else if (state === "specialist_need") {
-
-  if (text === "0" || text === "voltar") {
-
-    userStates.set(remoteJid, "main");
-    userLeads.delete(remoteJid);
-
-    response = getMainMenu();
-
-  } else {
-
-    const lead = userLeads.get(remoteJid);
-
-    lead.need =
-      message.message.conversation ||
-      message.message.extendedTextMessage?.text ||
-      "";
-
-    userLeads.set(remoteJid, lead);
-
-    userStates.set(remoteJid, "specialist_confirmation");
-
-    response = `📋 *CONFIRA SEUS DADOS*
+      }
+    } else if (state === "specialist_need") {
+      if (text === "0" || text === "voltar") {
+        userStates.set(remoteJid, "main");
+        userLeads.delete(remoteJid);
+        response = getMainMenu();
+      } else {
+        const lead = userLeads.get(remoteJid);
+        lead.need = messageContent;
+        userLeads.set(remoteJid, lead);
+        userStates.set(remoteJid, "specialist_confirmation");
+        response = `📋 *CONFIRA SEUS DADOS*
 
 👤 *Nome:* ${lead.name}
 
@@ -508,44 +364,25 @@ Está tudo correto?
 *1️⃣* Confirmar
 *2️⃣* Corrigir
 *0️⃣* Voltar ao menu`;
-  }
-}
+      }
+    } else if (state === "specialist_confirmation") {
+      if (text === "1" || text === "confirmar") {
+        const lead = userLeads.get(remoteJid);
+        try {
+          await pool.query(
+            `
+            INSERT INTO leads (whatsapp, nome, empresa, necessidade, status)
+            VALUES ($1, $2, $3, $4, $5)
+            `,
+            [remoteJid, lead.name, lead.company, lead.need, "novo"]
+          );
 
-else if (state === "specialist_confirmation") {
+          console.log("📋 NOVO LEAD SALVO NO BANCO:");
+          console.log(`👤 Nome: ${lead.name}`);
+          console.log(`🏢 Empresa: ${lead.company}`);
+          console.log(`🎯 Interesse: ${lead.need}`);
 
-  if (text === "1" || text === "confirmar") {
-
-  const lead = userLeads.get(remoteJid);
-
-  try {
-
-    await pool.query(
-      `
-      INSERT INTO leads (
-        whatsapp,
-        nome,
-        empresa,
-        necessidade,
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5)
-      `,
-      [
-        remoteJid,
-        lead.name,
-        lead.company,
-        lead.need,
-        "novo"
-      ]
-    );
-
-    console.log("📋 NOVO LEAD SALVO NO BANCO:");
-    console.log(`👤 Nome: ${lead.name}`);
-    console.log(`🏢 Empresa: ${lead.company}`);
-    console.log(`🎯 Interesse: ${lead.need}`);
-    console.log(`📱 WhatsApp: ${remoteJid}`);
-
-    response = `✅ *LEAD REGISTRADO!*
+          response = `✅ *LEAD REGISTRADO!*
 
 Obrigado pelas informações, ${lead.name}! 🚀
 
@@ -557,68 +394,40 @@ Até breve! 🤝
 
 Digite *menu* se quiser iniciar um novo atendimento.`;
 
-    userStates.delete(remoteJid);
-    userLeads.delete(remoteJid);
-
-  } catch (error) {
-
-    console.error("❌ ERRO AO SALVAR LEAD NO BANCO:");
-    console.error(error);
-
-    response = `⚠️ *NÃO CONSEGUIMOS REGISTRAR SEUS DADOS*
+          userStates.delete(remoteJid);
+          userLeads.delete(remoteJid);
+        } catch (error) {
+          console.error("❌ ERRO AO SALVAR LEAD NO BANCO:", error);
+          response = `⚠️ *NÃO CONSEGUIMOS REGISTRAR SEUS DADOS*
 
 Ocorreu um problema temporário ao registrar sua solicitação.
 
 Por favor, tente novamente em alguns instantes.`;
-  }
-
-} else if (text === "2" || text === "corrigir") {
-  
-  } else if (text === "2" || text === "corrigir") {
-
-    userStates.set(remoteJid, "specialist");
-
-    userLeads.delete(remoteJid);
-
-    response = `🔄 *VAMOS CORRIGIR*
+        }
+      } else if (text === "2" || text === "corrigir") {
+        userStates.set(remoteJid, "specialist");
+        userLeads.delete(remoteJid);
+        response = `🔄 *VAMOS CORRIGIR*
 
 Sem problemas!
 
 👤 Qual é o seu nome?`;
-
-  } else if (text === "0" || text === "voltar") {
-
-    userStates.set(remoteJid, "main");
-    userLeads.delete(remoteJid);
-
-    response = getMainMenu();
-
-  } else {
-
-    response = `🤔 Escolha uma opção:
+      } else if (text === "0" || text === "voltar") {
+        userStates.set(remoteJid, "main");
+        userLeads.delete(remoteJid);
+        response = getMainMenu();
+      } else {
+        response = `🤔 Escolha uma opção:
 
 *1️⃣* Confirmar
 *2️⃣* Corrigir
 *0️⃣* Voltar ao menu`;
-  }
-}
-
-    /*
-    ==========================================
-    SUPORTE
-    ==========================================
-    */
-
-    else if (state === "support") {
-
+      }
+    } else if (state === "support") {
       if (text === "0" || text === "voltar") {
-
         userStates.set(remoteJid, "main");
-
         response = getMainMenu();
-
       } else {
-
         response = `🛠️ *SOLICITAÇÃO RECEBIDA*
 
 Obrigado pelas informações.
@@ -627,42 +436,22 @@ Nossa equipe de suporte poderá analisar seu caso.
 
 Digite *0* para voltar ao menu.`;
       }
-    }
-
-    /*
-    ==========================================
-    AGRADECIMENTOS
-    ==========================================
-    */
-
-    else if (
+    } else if (
       text === "obrigado" ||
       text === "obrigada" ||
       text === "valeu" ||
       text === "vlw"
     ) {
-
       response = getThanks();
-    }
-
-    else {
-
+    } else {
       response = getUnknownOption();
     }
 
-    await sock.sendMessage(remoteJid, {
-      text: response
-    });
-
+    await sock.sendMessage(remoteJid, { text: response });
     console.log(`📤 Resposta enviada para ${remoteJid}`);
-
   } catch (error) {
-
     console.error("❌ Erro ao processar mensagem:", error);
-
   }
 }
 
-module.exports = {
-  handleMessage
-};
+module.exports = { handleMessage };

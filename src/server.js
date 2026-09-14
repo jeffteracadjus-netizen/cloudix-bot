@@ -1,9 +1,10 @@
 const express = require('express');
 const { default: makeWASocket, DisconnectReason, initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
-const { Pool } = require('pg');
 const pino = require('pino');
 const https = require('https');
+const { pool } = require('./database');
+const { handleMessage } = require('./bot');
 require('dotenv').config();
 
 const app = express();
@@ -11,23 +12,9 @@ const PORT = process.env.PORT || 3000;
 let qrCodeData = '';
 let statusBot = 'Desconectado';
 
-// Cache para prevenir respostas duplicadas
 const processedMessages = new Set();
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-
-// Gerenciador de Auth no PostgreSQL
 async function usePostgresAuthState(pool) {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS whatsapp_sessions (
-      id VARCHAR(255) PRIMARY KEY,
-      data TEXT NOT NULL
-    );
-  `);
-
   const writeData = async (data, id) => {
     try {
       const value = JSON.stringify(data, BufferJSON.replacer);
@@ -119,42 +106,19 @@ async function connectToWhatsApp() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  // Lógica de Comandos com Anti-Duplicidade
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
-      if (msg.key.fromMe || msg.key.remoteJid.endsWith('@g.us')) continue;
-
-      // EVITA DUPLICIDADE: Ignora se o ID da mensagem já foi processado
       if (processedMessages.has(msg.key.id)) continue;
       processedMessages.add(msg.key.id);
 
-      // Limpa histórico antigo para economizar memória
       if (processedMessages.size > 500) {
         const firstKey = processedMessages.values().next().value;
         processedMessages.delete(firstKey);
       }
 
-      const sender = msg.key.remoteJid;
-      const text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || '').trim().toLowerCase();
-
-      if (!text) continue;
-
-      if (text === '!menu' || text === 'menu') {
-        const menuText = "*📌 MENU PRINCIPAL*\n\n1️⃣ !suporte - Falar com a equipe\n2️⃣ !ping - Testar resposta\n3️⃣ !info - Informações do sistema";
-        await sock.sendMessage(sender, { text: menuText });
-      } else if (text === '!suporte') {
-        await sock.sendMessage(sender, { text: 'Um atendente analisará sua solicitação em breve.' });
-      } else if (text === '!ping') {
-        await sock.sendMessage(sender, { text: '🏓 Pong! Bot ativo e respondendo.' });
-      } else if (text === '!info') {
-        await sock.sendMessage(sender, { text: '🤖 Bot rodando no Render + PostgreSQL (Neon).' });
-      } else {
-        await sock.sendMessage(sender, { 
-          text: 'Olá! Digite *!menu* para ver as opções disponíveis.' 
-        });
-      }
+      await handleMessage(sock, msg);
     }
   });
 
@@ -170,7 +134,7 @@ async function connectToWhatsApp() {
     } else if (connection === 'open') {
       statusBot = 'Conectado';
       qrCodeData = '';
-      console.log('Bot conectado com sucesso ao WhatsApp (Sessão salva no DB)!');
+      console.log('Bot Cloudix totalmente conectado!');
     }
   });
 }
@@ -179,15 +143,10 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
   connectToWhatsApp();
 
-  // Self-Ping (Evitar Sleep no Render)
   const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
   if (RENDER_URL) {
     setInterval(() => {
-      https.get(RENDER_URL, (res) => {
-        console.log(`Self-ping enviado para ${RENDER_URL} | Status: ${res.statusCode}`);
-      }).on('error', (err) => {
-        console.error('Erro no self-ping:', err.message);
-      });
-    }, 10 * 60 * 1000); // Executa a cada 10 minutos
+      https.get(RENDER_URL, () => {}).on('error', () => {});
+    }, 10 * 60 * 1000);
   }
 });
