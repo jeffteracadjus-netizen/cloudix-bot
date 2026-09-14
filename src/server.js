@@ -41,6 +41,31 @@ async function connectToWhatsApp() {
 
   sock.ev.on('creds.update', saveCreds);
 
+  sock.ev.on('creds.update', saveCreds);
+
+  // --- ADICIONE ESTE BLOCO AQUI ---
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+
+    for (const msg of messages) {
+      // Ignora mensagens enviadas pelo próprio bot ou de grupos
+      if (msg.key.fromMe || msg.key.remoteJid.endsWith('@g.us')) continue;
+
+      const sender = msg.key.remoteJid;
+      const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+
+      console.log(`Mensagem recebida de ${sender}: ${text}`);
+
+      // Exemplo de resposta automática
+      if (text) {
+        await sock.sendMessage(sender, { 
+          text: 'Olá! Mensagem recebida com sucesso pelo bot no Render 🚀' 
+        });
+      }
+    }
+  });
+  // --------------------------------
+  
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
 
