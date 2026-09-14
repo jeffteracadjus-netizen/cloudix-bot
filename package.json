@@ -1,0 +1,27 @@
+{
+  "name": "cloudix-bot",
+  "version": "1.0.0",
+  "description": "CLOUDIX BOT - Automação de atendimento via WhatsApp",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "cloudix",
+    "whatsapp",
+    "bot",
+    "baileys",
+    "automation"
+  ],
+  "author": "CLOUDIX",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4"
+  }
+}
