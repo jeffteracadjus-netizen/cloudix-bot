@@ -11,6 +11,7 @@ const { handleMessage } = require("./bot");
 
 let sock = null;
 let whatsappConnected = false;
+let currentQRCode = null;
 
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(
@@ -38,27 +39,30 @@ async function startWhatsApp() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log("\n====================================");
-      console.log("📱 QR CODE DO WHATSAPP DISPONÍVEL");
-      console.log("====================================\n");
+  currentQR = qr;
 
-      try {
-        const qrTerminal = await QRCode.toString(qr, {
-          type: "terminal",
-          small: true
-        });
+  console.log("\n====================================");
+  console.log("📱 QR CODE DO WHATSAPP DISPONÍVEL");
+  console.log("====================================\n");
 
-        console.log(qrTerminal);
-        console.log("\nAbra o WhatsApp no celular:");
-        console.log("Configurações → Aparelhos conectados → Conectar aparelho");
-        console.log("Escaneie o QR Code acima.\n");
-      } catch (error) {
-        console.error("Erro ao gerar QR Code:", error);
-      }
-    }
+  try {
+    const qrTerminal = await QRCode.toString(qr, {
+      type: "terminal",
+      small: true
+    });
+
+    console.log(qrTerminal);
+    console.log("\nAbra o WhatsApp no celular:");
+    console.log("Configurações → Aparelhos conectados → Conectar aparelho");
+    console.log("Escaneie o QR Code acima.\n");
+  } catch (error) {
+    console.error("Erro ao gerar QR Code:", error);
+  }
+}
 
     if (connection === "open") {
       whatsappConnected = true;
+      currentQR = null;
 
       console.log("\n====================================");
       console.log("✅ WHATSAPP CONECTADO!");
@@ -97,7 +101,8 @@ function getSocket() {
 
 function getWhatsAppStatus() {
   return {
-    connected: whatsappConnected
+    connected: whatsappConnected,
+    qr: currentQR
   };
 }
 
