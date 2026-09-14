@@ -17,9 +17,10 @@ const pool = new Pool({
 });
 
 // Gerenciador de Auth no PostgreSQL
+// Gerenciador de Auth no PostgreSQL
 async function usePostgresAuthState(pool) {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS whatsapp_auth (
+    CREATE TABLE IF NOT EXISTS whatsapp_sessions (
       id VARCHAR(255) PRIMARY KEY,
       data TEXT NOT NULL
     );
@@ -29,7 +30,7 @@ async function usePostgresAuthState(pool) {
     try {
       const value = JSON.stringify(data, BufferJSON.replacer);
       await pool.query(
-        'INSERT INTO whatsapp_auth (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data',
+        'INSERT INTO whatsapp_sessions (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data',
         [id, value]
       );
     } catch (err) {
@@ -39,7 +40,7 @@ async function usePostgresAuthState(pool) {
 
   const readData = async (id) => {
     try {
-      const res = await pool.query('SELECT data FROM whatsapp_auth WHERE id = $1', [id]);
+      const res = await pool.query('SELECT data FROM whatsapp_sessions WHERE id = $1', [id]);
       if (res.rows[0]?.data) {
         return JSON.parse(res.rows[0].data, BufferJSON.reviver);
       }
@@ -51,7 +52,7 @@ async function usePostgresAuthState(pool) {
 
   const removeData = async (id) => {
     try {
-      await pool.query('DELETE FROM whatsapp_auth WHERE id = $1', [id]);
+      await pool.query('DELETE FROM whatsapp_sessions WHERE id = $1', [id]);
     } catch (err) {
       console.error('Erro ao deletar auth do DB:', err);
     }
