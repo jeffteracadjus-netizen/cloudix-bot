@@ -29,11 +29,15 @@ async function startWhatsApp() {
 
   sock.ev.on("creds.update", saveCreds);
 
-    sock.ev.on("messages.upsert", async ({ messages }) => {
-    for (const message of messages) {
-      await handleMessage(sock, message);
-    }
-  });
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+  if (type !== "notify") {
+    return;
+  }
+
+  for (const message of messages) {
+    await handleMessage(sock, message);
+  }
+});
 
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
