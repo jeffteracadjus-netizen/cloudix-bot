@@ -1,5 +1,7 @@
 node_modules/
 .env
 auth/
+auth_backup/
+auth_backup_2/
 *.log
 .DS_Store

@@ -11,7 +11,7 @@ const { handleMessage } = require("./bot");
 
 let sock = null;
 let whatsappConnected = false;
-let currentQRCode = null;
+let currentQR = null;
 
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(

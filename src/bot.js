@@ -1,3 +1,5 @@
+const { pool } = require("./database");
+
 const userStates = new Map();
 const userLeads = new Map();
 
@@ -513,12 +515,35 @@ else if (state === "specialist_confirmation") {
 
   if (text === "1" || text === "confirmar") {
 
-    const lead = userLeads.get(remoteJid);
+  const lead = userLeads.get(remoteJid);
 
-    console.log("📋 NOVO LEAD:");
+  try {
+
+    await pool.query(
+      `
+      INSERT INTO leads (
+        whatsapp,
+        nome,
+        empresa,
+        necessidade,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      `,
+      [
+        remoteJid,
+        lead.name,
+        lead.company,
+        lead.need,
+        "novo"
+      ]
+    );
+
+    console.log("📋 NOVO LEAD SALVO NO BANCO:");
     console.log(`👤 Nome: ${lead.name}`);
     console.log(`🏢 Empresa: ${lead.company}`);
     console.log(`🎯 Interesse: ${lead.need}`);
+    console.log(`📱 WhatsApp: ${remoteJid}`);
 
     response = `✅ *LEAD REGISTRADO!*
 
@@ -535,6 +560,20 @@ Digite *menu* se quiser iniciar um novo atendimento.`;
     userStates.delete(remoteJid);
     userLeads.delete(remoteJid);
 
+  } catch (error) {
+
+    console.error("❌ ERRO AO SALVAR LEAD NO BANCO:");
+    console.error(error);
+
+    response = `⚠️ *NÃO CONSEGUIMOS REGISTRAR SEUS DADOS*
+
+Ocorreu um problema temporário ao registrar sua solicitação.
+
+Por favor, tente novamente em alguns instantes.`;
+  }
+
+} else if (text === "2" || text === "corrigir") {
+  
   } else if (text === "2" || text === "corrigir") {
 
     userStates.set(remoteJid, "specialist");

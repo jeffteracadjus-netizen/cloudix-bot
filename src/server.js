@@ -1,5 +1,6 @@
 const express = require("express");
 require("dotenv").config();
+const { testDatabase, createTables } = require("./database");
 
 const QRCode = require("qrcode");
 
@@ -431,6 +432,9 @@ app.get("/qr", async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`CLOUDIX BOT rodando na porta ${PORT}`);
 
+  await testDatabase();
+  await createTables();
+  
   try {
     await startWhatsApp();
   } catch (error) {
