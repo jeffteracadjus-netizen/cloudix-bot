@@ -22,8 +22,8 @@ async function startWhatsApp() {
     auth: state,
     printQRInTerminal: false,
     logger: P({
-      level: "silent"
-    }),
+  level: "info"
+}),
     browser: ["CLOUDIX BOT", "Chrome", "1.0.0"]
   });
 
