@@ -13,3 +13,11 @@ services:
 
       - key: PORT
         value: 10000
+
+      - key: AUTH_FOLDER
+        value: /data/auth
+
+    disk:
+      name: cloudix-bot-data
+      mountPath: /data
+      sizeGB: 1
