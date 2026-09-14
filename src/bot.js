@@ -1,3 +1,6 @@
+const userStates = new Map();
+const userLeads = new Map();
+
 function getMainMenu() {
   return `👋 Olá! Seja bem-vindo à *CLOUDIX*.
 
@@ -5,7 +8,7 @@ Somos uma empresa de tecnologia, automação e inteligência artificial.
 
 Como podemos ajudar você hoje?
 
-*1️⃣* Conhecer nossos planos
+*1️⃣* Conhecer nossas soluções
 *2️⃣* Falar com um especialista
 *3️⃣* Suporte
 
@@ -13,42 +16,102 @@ Digite apenas o número da opção desejada.`;
 }
 
 function getPlans() {
-  return `💼 *PLANOS CLOUDIX*
+  return `🤖 *SOLUÇÕES CLOUDIX*
 
-A CLOUDIX oferece soluções de tecnologia, automação e inteligência artificial para empresas.
+Escolha uma solução para conhecer melhor:
 
-Nossas soluções podem ajudar sua empresa com:
+*1️⃣* CLOUDIX AI
+*2️⃣* Automação
+*3️⃣* Marketing & Conteúdo
+*4️⃣* Atendimento
+*0️⃣* Voltar ao menu
 
-🤖 Inteligência Artificial
-⚙️ Automação de processos
-📱 Atendimento
+Digite o número da opção desejada.`;
+}
+
+function getCloudixAI() {
+  return `🤖 *CLOUDIX AI*
+
+Inteligência artificial desenvolvida para ajudar empresas a automatizar e melhorar seus processos.
+
+A CLOUDIX AI pode atuar em áreas como:
+
+🛒 Vendas
+📣 Marketing
+💬 Atendimento
+💰 Financeiro
 📊 Estratégia
-📈 Vendas e marketing
-
-Para conhecer valores e condições, fale com um especialista.
 
 Digite:
 
-*2* → Falar com especialista
-*0* → Voltar ao menu`;
+*1️⃣* Conhecer a solução
+*2️⃣* Falar com especialista
+*0️⃣* Voltar`;
+}
+
+function getAutomation() {
+  return `⚙️ *AUTOMAÇÃO CLOUDIX*
+
+Automatize tarefas e processos repetitivos da sua empresa.
+
+Podemos trabalhar com:
+
+🔄 Processos automáticos
+📱 Atendimento
+📊 Organização de dados
+🔔 Notificações
+🤖 Inteligência artificial
+
+Digite:
+
+*2️⃣* Falar com especialista
+*0️⃣* Voltar`;
+}
+
+function getMarketing() {
+  return `📣 *MARKETING & CONTEÚDO*
+
+A CLOUDIX pode ajudar sua empresa a melhorar sua presença digital através de:
+
+📱 Conteúdo para redes sociais
+📅 Planejamento
+🎨 Criativos
+📈 Estratégia
+🤖 Inteligência artificial
+
+Digite:
+
+*2️⃣* Falar com especialista
+*0️⃣* Voltar`;
+}
+
+function getService() {
+  return `💬 *ATENDIMENTO CLOUDIX*
+
+Transforme o atendimento da sua empresa com tecnologia.
+
+Podemos ajudar com:
+
+🤖 Atendimento automatizado
+📱 WhatsApp
+💬 Respostas inteligentes
+📋 Organização de clientes
+🧠 Inteligência artificial
+
+Digite:
+
+*2️⃣* Falar com especialista
+*0️⃣* Voltar`;
 }
 
 function getSpecialist() {
   return `👨‍💻 *ESPECIALISTA CLOUDIX*
 
-Perfeito! 🚀
+Vamos entender melhor sua empresa.
 
-Vamos encaminhar seu atendimento para um especialista da CLOUDIX.
+👤 *Qual é o seu nome?*
 
-Enquanto isso, envie:
-
-• Seu nome
-• Nome da empresa
-• O que você está procurando
-
-Nossa equipe poderá entender melhor sua necessidade.
-
-Digite *0* para voltar ao menu.`;
+Digite seu nome ou *0* para voltar ao menu.`;
 }
 
 function getSupport() {
@@ -56,11 +119,15 @@ function getSupport() {
 
 Vamos ajudar você.
 
-Descreva o problema que está enfrentando e, se possível, informe:
+Envie:
 
-• O que aconteceu
-• Quando começou
-• Qual serviço está utilizando
+👤 *Seu nome:*
+
+🏢 *Empresa:*
+
+🔧 *Serviço que está utilizando:*
+
+❌ *Descreva o problema:*
 
 Nossa equipe analisará sua solicitação.
 
@@ -78,13 +145,7 @@ Digite *menu* para abrir novamente o menu principal.`;
 function getUnknownOption() {
   return `🤔 Não consegui identificar essa opção.
 
-Escolha uma das opções:
-
-*1️⃣* Planos
-*2️⃣* Falar com especialista
-*3️⃣* Suporte
-
-Digite *0* para voltar ao menu.`;
+Escolha uma das opções disponíveis ou digite *menu* para voltar ao início.`;
 }
 
 function normalizeText(text) {
@@ -116,67 +177,438 @@ async function handleMessage(sock, message) {
 
     console.log(`📩 Mensagem recebida: ${text}`);
 
+    let state = userStates.get(remoteJid) || "main";
+
     let response;
 
-    switch (text) {
+    /*
+    ==========================================
+    COMANDOS GLOBAIS
+    ==========================================
+    */
 
-      // MENU
+    if (
+      text === "menu" ||
+      text === "inicio" ||
+      text === "comecar" ||
+      text === "oi" ||
+      text === "ola" ||
+      text === "bom dia" ||
+      text === "boa tarde" ||
+      text === "boa noite"
+    ) {
+      userStates.set(remoteJid, "main");
 
-      case "oi":
-      case "ola":
-      case "bom dia":
-      case "boa tarde":
-      case "boa noite":
-      case "menu":
-      case "inicio":
-      case "comecar":
+      response = getMainMenu();
+
+      await sock.sendMessage(remoteJid, {
+        text: response
+      });
+
+      console.log(`📤 Resposta enviada para ${remoteJid}`);
+      return;
+    }
+
+    /*
+    ==========================================
+    MENU PRINCIPAL
+    ==========================================
+    */
+
+    if (state === "main") {
+
+      switch (text) {
+
+        case "1":
+        case "planos":
+        case "plano":
+        case "solucoes":
+        case "solucao":
+
+          userStates.set(remoteJid, "solutions");
+
+          response = getPlans();
+          break;
+
+        case "2":
+        case "especialista":
+        case "vendedor":
+        case "vendas":
+
+          userStates.set(remoteJid, "specialist");
+
+          response = getSpecialist();
+          break;
+
+        case "3":
+        case "suporte":
+        case "ajuda":
+
+          userStates.set(remoteJid, "support");
+
+          response = getSupport();
+          break;
+
+        default:
+
+          response = getUnknownOption();
+      }
+    }
+
+    /*
+    ==========================================
+    MENU DE SOLUÇÕES
+    ==========================================
+    */
+
+    else if (state === "solutions") {
+
+      switch (text) {
+
+        case "1":
+        case "cloudix ai":
+        case "ia":
+        case "inteligencia artificial":
+
+          userStates.set(remoteJid, "cloudix_ai");
+
+          response = getCloudixAI();
+          break;
+
+        case "2":
+        case "automacao":
+
+          userStates.set(remoteJid, "automation");
+
+          response = getAutomation();
+          break;
+
+        case "3":
+        case "marketing":
+        case "conteudo":
+
+          userStates.set(remoteJid, "marketing");
+
+          response = getMarketing();
+          break;
+
+        case "4":
+        case "atendimento":
+
+          userStates.set(remoteJid, "service");
+
+          response = getService();
+          break;
+
+        case "0":
+        case "voltar":
+
+          userStates.set(remoteJid, "main");
+
+          response = getMainMenu();
+          break;
+
+        default:
+
+          response = getPlans();
+      }
+    }
+
+    /*
+    ==========================================
+    CLOUDIX AI
+    ==========================================
+    */
+
+    else if (state === "cloudix_ai") {
+
+      switch (text) {
+
+        case "1":
+
+          response = `🚀 *CLOUDIX AI*
+
+A CLOUDIX pode desenvolver uma solução de inteligência artificial personalizada para sua empresa.
+
+Para entender o que sua empresa precisa, vamos encaminhar você para um especialista.
+
+Digite *2* para falar com um especialista.
+
+Digite *0* para voltar às soluções.`;
+
+          break;
+
+        case "2":
+
+          userStates.set(remoteJid, "specialist");
+
+          response = getSpecialist();
+
+          break;
+
+        case "0":
+
+          userStates.set(remoteJid, "solutions");
+
+          response = getPlans();
+
+          break;
+
+        default:
+
+          response = getCloudixAI();
+      }
+    }
+
+    /*
+    ==========================================
+    OUTRAS SOLUÇÕES
+    ==========================================
+    */
+
+    else if (
+      state === "automation" ||
+      state === "marketing" ||
+      state === "service"
+    ) {
+
+      switch (text) {
+
+        case "2":
+        case "especialista":
+
+          userStates.set(remoteJid, "specialist");
+
+          response = getSpecialist();
+
+          break;
+
+        case "0":
+        case "voltar":
+
+          userStates.set(remoteJid, "solutions");
+
+          response = getPlans();
+
+          break;
+
+        default:
+
+          if (state === "automation") {
+            response = getAutomation();
+          } else if (state === "marketing") {
+            response = getMarketing();
+          } else {
+            response = getService();
+          }
+      }
+    }
+
+    /*
+    ==========================================
+    ESPECIALISTA
+    ==========================================
+    */
+
+    else if (state === "specialist") {
+
+  if (text === "0" || text === "voltar") {
+
+    userStates.set(remoteJid, "main");
+    userLeads.delete(remoteJid);
+
+    response = getMainMenu();
+
+  } else {
+
+    userLeads.set(remoteJid, {
+      name: message.message.conversation ||
+        message.message.extendedTextMessage?.text ||
+        ""
+    });
+
+    userStates.set(remoteJid, "specialist_company");
+
+    response = `🏢 *PERFEITO!*
+
+Agora, qual é o nome da sua empresa?
+
+Digite o nome da empresa ou *0* para voltar ao menu.`;
+  }
+}
+
+else if (state === "specialist_company") {
+
+  if (text === "0" || text === "voltar") {
+
+    userStates.set(remoteJid, "main");
+    userLeads.delete(remoteJid);
+
+    response = getMainMenu();
+
+  } else {
+
+    const lead = userLeads.get(remoteJid);
+
+    lead.company =
+      message.message.conversation ||
+      message.message.extendedTextMessage?.text ||
+      "";
+
+    userLeads.set(remoteJid, lead);
+
+    userStates.set(remoteJid, "specialist_need");
+
+    response = `🎯 *ÓTIMO!*
+
+Agora conte para nós:
+
+*O que você está procurando ou qual problema sua empresa gostaria de resolver?*
+
+Pode explicar com suas próprias palavras.
+
+Digite *0* para voltar ao menu.`;
+  }
+}
+
+else if (state === "specialist_need") {
+
+  if (text === "0" || text === "voltar") {
+
+    userStates.set(remoteJid, "main");
+    userLeads.delete(remoteJid);
+
+    response = getMainMenu();
+
+  } else {
+
+    const lead = userLeads.get(remoteJid);
+
+    lead.need =
+      message.message.conversation ||
+      message.message.extendedTextMessage?.text ||
+      "";
+
+    userLeads.set(remoteJid, lead);
+
+    userStates.set(remoteJid, "specialist_confirmation");
+
+    response = `📋 *CONFIRA SEUS DADOS*
+
+👤 *Nome:* ${lead.name}
+
+🏢 *Empresa:* ${lead.company}
+
+🎯 *Interesse:* ${lead.need}
+
+Está tudo correto?
+
+*1️⃣* Confirmar
+*2️⃣* Corrigir
+*0️⃣* Voltar ao menu`;
+  }
+}
+
+else if (state === "specialist_confirmation") {
+
+  if (text === "1" || text === "confirmar") {
+
+    const lead = userLeads.get(remoteJid);
+
+    console.log("📋 NOVO LEAD:");
+    console.log(`👤 Nome: ${lead.name}`);
+    console.log(`🏢 Empresa: ${lead.company}`);
+    console.log(`🎯 Interesse: ${lead.need}`);
+
+    response = `✅ *LEAD REGISTRADO!*
+
+Obrigado pelas informações, ${lead.name}! 🚀
+
+Recebemos sua solicitação.
+
+Um especialista da *CLOUDIX* poderá entrar em contato para entender melhor sua necessidade.
+
+Até breve! 🤝
+
+Digite *menu* se quiser iniciar um novo atendimento.`;
+
+    userStates.delete(remoteJid);
+    userLeads.delete(remoteJid);
+
+  } else if (text === "2" || text === "corrigir") {
+
+    userStates.set(remoteJid, "specialist");
+
+    userLeads.delete(remoteJid);
+
+    response = `🔄 *VAMOS CORRIGIR*
+
+Sem problemas!
+
+👤 Qual é o seu nome?`;
+
+  } else if (text === "0" || text === "voltar") {
+
+    userStates.set(remoteJid, "main");
+    userLeads.delete(remoteJid);
+
+    response = getMainMenu();
+
+  } else {
+
+    response = `🤔 Escolha uma opção:
+
+*1️⃣* Confirmar
+*2️⃣* Corrigir
+*0️⃣* Voltar ao menu`;
+  }
+}
+
+    /*
+    ==========================================
+    SUPORTE
+    ==========================================
+    */
+
+    else if (state === "support") {
+
+      if (text === "0" || text === "voltar") {
+
+        userStates.set(remoteJid, "main");
+
         response = getMainMenu();
-        break;
 
-      // PLANOS
+      } else {
 
-      case "1":
-      case "planos":
-      case "plano":
-        response = getPlans();
-        break;
+        response = `🛠️ *SOLICITAÇÃO RECEBIDA*
 
-      // ESPECIALISTA
+Obrigado pelas informações.
 
-      case "2":
-      case "especialista":
-      case "vendedor":
-      case "vendas":
-        response = getSpecialist();
-        break;
+Nossa equipe de suporte poderá analisar seu caso.
 
-      // SUPORTE
+Digite *0* para voltar ao menu.`;
+      }
+    }
 
-      case "3":
-      case "suporte":
-      case "ajuda":
-        response = getSupport();
-        break;
+    /*
+    ==========================================
+    AGRADECIMENTOS
+    ==========================================
+    */
 
-      // VOLTAR
+    else if (
+      text === "obrigado" ||
+      text === "obrigada" ||
+      text === "valeu" ||
+      text === "vlw"
+    ) {
 
-      case "0":
-      case "voltar":
-      case "voltar menu":
-        response = getMainMenu();
-        break;
+      response = getThanks();
+    }
 
-      // AGRADECIMENTO
+    else {
 
-      case "obrigado":
-      case "obrigada":
-      case "valeu":
-      case "vlw":
-        response = getThanks();
-        break;
-
-      default:
-        response = getUnknownOption();
+      response = getUnknownOption();
     }
 
     await sock.sendMessage(remoteJid, {
@@ -186,7 +618,9 @@ async function handleMessage(sock, message) {
     console.log(`📤 Resposta enviada para ${remoteJid}`);
 
   } catch (error) {
+
     console.error("❌ Erro ao processar mensagem:", error);
+
   }
 }
 
