@@ -179,6 +179,7 @@ async function handleMessage(sock, message) {
     let state = userStates.get(remoteJid) || "main";
     let response;
 
+    // Comandos globais de reinício
     if (
       text === "menu" ||
       text === "inicio" ||
@@ -394,7 +395,8 @@ Até breve! 🤝
 
 Digite *menu* se quiser iniciar um novo atendimento.`;
 
-          userStates.delete(remoteJid);
+          // Coloca o usuário em modo silencioso (atendimento humano)
+          userStates.set(remoteJid, "human_attending");
           userLeads.delete(remoteJid);
         } catch (error) {
           console.error("❌ ERRO AO SALVAR LEAD NO BANCO:", error);
@@ -436,6 +438,9 @@ Nossa equipe de suporte poderá analisar seu caso.
 
 Digite *0* para voltar ao menu.`;
       }
+    } else if (state === "human_attending") {
+      // Atendimento humano ativo: o bot permanece totalmente em silêncio
+      return;
     } else if (
       text === "obrigado" ||
       text === "obrigada" ||
