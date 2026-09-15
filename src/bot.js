@@ -2,6 +2,7 @@ const { pool } = require("./database");
 
 const userStates = new Map();
 const userLeads = new Map();
+const userTimers = new Map(); // Gerencia os timers de inatividade por cliente
 
 function getMainMenu() {
   return `👋 Olá! Seja bem-vindo à *CLOUDIX*.
@@ -136,12 +137,13 @@ Nossa equipe analisará sua solicitação.
 Digite *0* para voltar ao menu.`;
 }
 
-function getThanks() {
-  return `😊 Por nada!
+function getClosingPrompt() {
+  return `😊 Por nada! Ficamos felizes em ajudar.
 
-Se precisar de alguma coisa, estou por aqui.
+Deseja finalizar este atendimento?
 
-Digite *menu* para abrir novamente o menu principal.`;
+*1️⃣* Sim, finalizar atendimento
+*2️⃣* Não, voltar ao menu principal`;
 }
 
 function getUnknownOption() {
@@ -156,6 +158,33 @@ function normalizeText(text) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+// Gerenciador do timer de inatividade (15 minutos)
+function resetInactivityTimer(sock, remoteJid) {
+  if (userTimers.has(remoteJid)) {
+    clearTimeout(userTimers.get(remoteJid));
+  }
+
+  const timer = setTimeout(async () => {
+    const currentState = userStates.get(remoteJid);
+    
+    // Só envia aviso se o usuário ainda estiver interagindo com o bot (fora de human_attending)
+    if (currentState && currentState !== "human_attending") {
+      userStates.set(remoteJid, "check_inactivity");
+      await sock.sendMessage(remoteJid, {
+        text: `⏳ *ATENDIMENTO INATIVO*
+
+Percebi que você está há um tempo sem responder. Podemos finalizar este atendimento?
+
+*1️⃣* Sim, finalizar
+*2️⃣* Continuar atendimento`
+      });
+    }
+    userTimers.delete(remoteJid);
+  }, 15 * 60 * 1000); // 15 Minutos
+
+  userTimers.set(remoteJid, timer);
 }
 
 async function handleMessage(sock, message) {
@@ -175,6 +204,9 @@ async function handleMessage(sock, message) {
 
     const text = normalizeText(messageContent);
     console.log(`📩 Mensagem recebida: ${text}`);
+
+    // Atualiza o timer de inatividade
+    resetInactivityTimer(sock, remoteJid);
 
     let state = userStates.get(remoteJid) || "main";
     let response;
@@ -312,9 +344,7 @@ Digite *0* para voltar às soluções.`;
         userLeads.delete(remoteJid);
         response = getMainMenu();
       } else {
-        userLeads.set(remoteJid, {
-          name: messageContent
-        });
+        userLeads.set(remoteJid, { name: messageContent });
         userStates.set(remoteJid, "specialist_company");
         response = `🏢 *PERFEITO!*
 
@@ -395,7 +425,6 @@ Até breve! 🤝
 
 Digite *menu* se quiser iniciar um novo atendimento.`;
 
-          // Coloca o usuário em modo silencioso (atendimento humano)
           userStates.set(remoteJid, "human_attending");
           userLeads.delete(remoteJid);
         } catch (error) {
@@ -438,8 +467,25 @@ Nossa equipe de suporte poderá analisar seu caso.
 
 Digite *0* para voltar ao menu.`;
       }
+    } else if (state === "check_inactivity") {
+      if (text === "1" || text === "sim" || text === "finalizar") {
+        userStates.delete(remoteJid);
+        if (userTimers.has(remoteJid)) clearTimeout(userTimers.get(remoteJid));
+        response = "✅ *Atendimento finalizado!* Qualquer dúvida, basta nos chamar novamente. Tenha um excelente dia! 🚀";
+      } else {
+        userStates.set(remoteJid, "main");
+        response = getMainMenu();
+      }
+    } else if (state === "closing_confirmation") {
+      if (text === "1" || text === "sim" || text === "finalizar") {
+        userStates.delete(remoteJid);
+        if (userTimers.has(remoteJid)) clearTimeout(userTimers.get(remoteJid));
+        response = "✅ *Atendimento finalizado com sucesso!* A equipe Cloudix agradece. Até a próxima! 👋";
+      } else {
+        userStates.set(remoteJid, "main");
+        response = getMainMenu();
+      }
     } else if (state === "human_attending") {
-      // Atendimento humano ativo: o bot permanece totalmente em silêncio
       return;
     } else if (
       text === "obrigado" ||
@@ -447,7 +493,8 @@ Digite *0* para voltar ao menu.`;
       text === "valeu" ||
       text === "vlw"
     ) {
-      response = getThanks();
+      userStates.set(remoteJid, "closing_confirmation");
+      response = getClosingPrompt();
     } else {
       response = getUnknownOption();
     }
