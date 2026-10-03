@@ -1,418 +1,124 @@
-const {
-    default: makeWASocket,
-    DisconnectReason,
-    makeCacheableSignalKeyStore,
-    initAuthCreds,
-    BufferJSON,
-    proto
-} = require("@whiskeysockets/baileys");
-
+const { default: makeWASocket, DisconnectReason, initAuthCreds, BufferJSON, proto } = require("@whiskeysockets/baileys");
 const P = require("pino");
 const QRCode = require("qrcode");
-
-const config = require("./config");
 const { handleMessage } = require("./bot");
 const { pool } = require("./database");
 
 let sock = null;
-let whatsappConnected = false;
 let currentQR = null;
 
-// =====================================================
-// AUTENTICAÇÃO DO WHATSAPP NO POSTGRESQL
-// =====================================================
-
 async function usePostgresAuthState() {
-
-    const { rows } = await pool.query(
-        "SELECT key, value FROM whatsapp_auth"
-    );
-
-    const data = {};
-
-    for (const row of rows) {
-        data[row.key] = row.value;
+  const writeData = async (data, id) => {
+    try {
+      const value = JSON.stringify(data, BufferJSON.replacer);
+      await pool.query(
+        'INSERT INTO whatsapp_sessions (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data',
+        [id, value]
+      );
+    } catch (err) {
+      console.error('Erro ao salvar auth no DB:', err);
     }
+  };
 
-    const creds = data["creds"]
-        ? JSON.parse(JSON.stringify(data["creds"], BufferJSON.reviver))
-        : initAuthCreds();
-
-    async function saveCreds() {
-        await pool.query(
-            `
-            INSERT INTO whatsapp_auth (key, value)
-            VALUES ($1, $2)
-            ON CONFLICT (key)
-            DO UPDATE SET value = EXCLUDED.value
-            `,
-            [
-                "creds",
-                JSON.stringify(creds, BufferJSON.replacer)
-            ]
-        );
+  const readData = async (id) => {
+    try {
+      const res = await pool.query('SELECT data FROM whatsapp_sessions WHERE id = $1', [id]);
+      if (res.rows[0]?.data) {
+        return JSON.parse(res.rows[0].data, BufferJSON.reviver);
+      }
+    } catch (err) {
+      console.error('Erro ao ler auth do DB:', err);
     }
+    return null;
+  };
 
-    const keys = {
+  const removeData = async (id) => {
+    try {
+      await pool.query('DELETE FROM whatsapp_sessions WHERE id = $1', [id]);
+    } catch (err) {
+      console.error('Erro ao deletar auth do DB:', err);
+    }
+  };
+
+  const creds = (await readData('creds')) || initAuthCreds();
+
+  return {
+    state: {
+      creds,
+      keys: {
         get: async (type, ids) => {
-
-            const result = {};
-
-            for (const id of ids) {
-
-                const key = `${type}-${id}`;
-
-                const query = await pool.query(
-                    "SELECT value FROM whatsapp_auth WHERE key = $1",
-                    [key]
-                );
-
-                if (query.rows.length) {
-
-                    result[id] = JSON.parse(
-                        JSON.stringify(
-                            query.rows[0].value
-                        ),
-                        BufferJSON.reviver
-                    );
-                }
-            }
-
-            return result;
+          const data = {};
+          await Promise.all(
+            ids.map(async (id) => {
+              let value = await readData(`${type}-${id}`);
+              if (type === 'app-state-sync-key' && value) {
+                value = proto.Message.AppStateSyncKeyData.fromObject(value);
+              }
+              data[id] = value;
+            })
+          );
+          return data;
         },
-
         set: async (data) => {
-
-            for (const category of Object.keys(data)) {
-
-                for (const id of Object.keys(data[category])) {
-
-                    const key = `${category}-${id}`;
-
-                    const value = data[category][id];
-
-                    await pool.query(
-                        `
-                        INSERT INTO whatsapp_auth (key, value)
-                        VALUES ($1, $2)
-                        ON CONFLICT (key)
-                        DO UPDATE SET value = EXCLUDED.value
-                        `,
-                        [
-                            key,
-                            JSON.parse(
-                                JSON.stringify(
-                                    value,
-                                    BufferJSON.replacer
-                                )
-                            )
-                        ]
-                    );
-                }
+          const tasks = [];
+          for (const category in data) {
+            for (const id in data[category]) {
+              const value = data[category][id];
+              const key = `${category}-${id}`;
+              tasks.push(value ? writeData(value, key) : removeData(key));
             }
+          }
+          await Promise.all(tasks);
         }
-    };
-
-    return {
-        state: {
-            creds,
-            keys: makeCacheableSignalKeyStore(
-                keys,
-                P({
-                    level: "silent"
-                })
-            )
-        },
-        saveCreds
-    };
+      }
+    },
+    saveCreds: () => writeData(creds, 'creds')
+  };
 }
-
-// =====================================================
-// INICIAR WHATSAPP
-// =====================================================
 
 async function startWhatsApp() {
-
-    try {
-
-        const { state, saveCreds } =
-            await usePostgresAuthState();
-
-        sock = makeWASocket({
-
-            auth: state,
-
-            printQRInTerminal: false,
-
-            logger: P({
-                level: "info"
-            }),
-
-            browser: [
-                "CLOUDIX BOT",
-                "Chrome",
-                "1.0.0"
-            ]
-        });
-
-        // =================================================
-        // SALVAR CREDENCIAIS
-        // =================================================
-
-        sock.ev.on(
-            "creds.update",
-            async () => {
-
-                try {
-
-                    await saveCreds();
-
-                    console.log(
-                        "💾 Credenciais do WhatsApp salvas no PostgreSQL."
-                    );
-
-                } catch (error) {
-
-                    console.error(
-                        "❌ Erro ao salvar credenciais:",
-                        error.message
-                    );
-                }
-            }
-        );
-
-        // =================================================
-        // RECEBER MENSAGENS
-        // =================================================
-
-        sock.ev.on(
-            "messages.upsert",
-            async ({ messages, type }) => {
-
-                if (type !== "notify") {
-                    return;
-                }
-
-                for (const message of messages) {
-
-                    try {
-
-                        await handleMessage(
-                            sock,
-                            message
-                        );
-
-                    } catch (error) {
-
-                        console.error(
-                            "❌ Erro ao processar mensagem:",
-                            error.message
-                        );
-                    }
-                }
-            }
-        );
-
-        // =================================================
-        // STATUS DA CONEXÃO
-        // =================================================
-
-        sock.ev.on(
-            "connection.update",
-            async (update) => {
-
-                const {
-                    connection,
-                    lastDisconnect,
-                    qr
-                } = update;
-
-                // =============================================
-                // QR CODE
-                // =============================================
-
-                if (qr) {
-
-                    currentQR = qr;
-
-                    console.log(
-                        "\n===================================="
-                    );
-
-                    console.log(
-                        "📱 QR CODE DO WHATSAPP DISPONÍVEL"
-                    );
-
-                    console.log(
-                        "====================================\n"
-                    );
-
-                    try {
-
-                        const qrTerminal =
-                            await QRCode.toString(
-                                qr,
-                                {
-                                    type: "terminal",
-                                    small: true
-                                }
-                            );
-
-                        console.log(qrTerminal);
-
-                        console.log(
-                            "\nAbra o WhatsApp no celular:"
-                        );
-
-                        console.log(
-                            "Configurações → Aparelhos conectados → Conectar aparelho"
-                        );
-
-                        console.log(
-                            "Escaneie o QR Code acima.\n"
-                        );
-
-                    } catch (error) {
-
-                        console.error(
-                            "❌ Erro ao gerar QR Code:",
-                            error.message
-                        );
-                    }
-                }
-
-                // =============================================
-                // CONECTADO
-                // =============================================
-
-                if (connection === "open") {
-
-                    whatsappConnected = true;
-                    currentQR = null;
-
-                    console.log(
-                        "\n===================================="
-                    );
-
-                    console.log(
-                        "✅ WHATSAPP CONECTADO!"
-                    );
-
-                    console.log(
-                        "🤖 CLOUDIX BOT ONLINE"
-                    );
-
-                    console.log(
-                        "💾 Sessão armazenada no PostgreSQL"
-                    );
-
-                    console.log(
-                        "====================================\n"
-                    );
-                }
-
-                // =============================================
-                // DESCONECTADO
-                // =============================================
-
-                if (connection === "close") {
-
-                    whatsappConnected = false;
-
-                    const statusCode =
-                        lastDisconnect
-                            ?.error
-                            ?.output
-                            ?.statusCode;
-
-                    const shouldReconnect =
-                        statusCode !==
-                        DisconnectReason.loggedOut;
-
-                    console.log(
-                        "\n⚠️ Conexão do WhatsApp encerrada."
-                    );
-
-                    console.log(
-                        "Código:",
-                        statusCode
-                    );
-
-                    if (shouldReconnect) {
-
-                        console.log(
-                            "🔄 Tentando reconectar...\n"
-                        );
-
-                        setTimeout(
-                            () => {
-                                startWhatsApp();
-                            },
-                            3000
-                        );
-
-                    } else {
-
-                        currentQR = null;
-
-                        console.log(
-                            "❌ WhatsApp desconectado permanentemente."
-                        );
-
-                        console.log(
-                            "📱 Será necessário autenticar novamente."
-                        );
-                    }
-                }
-            }
-        );
-
-        return sock;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Erro ao iniciar WhatsApp:",
-            error
-        );
-
-        whatsappConnected = false;
-
-        setTimeout(
-            () => {
-                startWhatsApp();
-            },
-            5000
-        );
-    }
+  try {
+    const { state, saveCreds } = await usePostgresAuthState();
+
+    sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: true,
+      logger: P({ level: "silent" })
+    });
+
+    sock.ev.on("creds.update", saveCreds);
+
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      if (type !== "notify") return;
+      for (const message of messages) {
+        await handleMessage(sock, message);
+      }
+    });
+
+    sock.ev.on("connection.update", async (update) => {
+      if (connection === "open") {
+  currentQR = null;
+  if (!whatsappConnected) {
+    whatsappConnected = true;
+    console.log("✅ WHATSAPP CONECTADO E BOT ONLINE!");
+  }
 }
 
-// =====================================================
-// SOCKET
-// =====================================================
+      if (connection === "close") {
+        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        if (shouldReconnect) {
+          setTimeout(startWhatsApp, 3000);
+        }
+      }
+    });
 
-function getSocket() {
     return sock;
+  } catch (error) {
+    console.error("❌ Erro ao iniciar WhatsApp:", error);
+    setTimeout(startWhatsApp, 5000);
+  }
 }
 
-// =====================================================
-// STATUS
-// =====================================================
+function getQRCode() { return currentQR; }
 
-function getWhatsAppStatus() {
-
-    return {
-        connected: whatsappConnected,
-        qr: currentQR
-    };
-}
-
-// =====================================================
-// EXPORTS
-// =====================================================
-
-module.exports = {
-    startWhatsApp,
-    getSocket,
-    getWhatsAppStatus
-};
+module.exports = { startWhatsApp, getQRCode };

@@ -1,9 +1,8 @@
 const { pool } = require("./database");
 
-const userStates = new Map();
-const userLeads = new Map();
-const userTimers = new Map(); // Gerencia os timers de inatividade por cliente
+const userTimers = new Map(); // Timers temporários de inatividade
 
+// --- MENSAGENS DE MENU ---
 function getMainMenu() {
   return `👋 Olá! Seja bem-vindo à *CLOUDIX*.
 
@@ -27,26 +26,15 @@ Escolha uma solução para conhecer melhor:
 *2️⃣* Automação
 *3️⃣* Marketing & Conteúdo
 *4️⃣* Atendimento
-*0️⃣* Voltar ao menu
-
-Digite o número da opção desejada.`;
+*0️⃣* Voltar ao menu`;
 }
 
 function getCloudixAI() {
   return `🤖 *CLOUDIX AI*
 
-Inteligência artificial desenvolvida para ajudar empresas a automatizar e melhorar seus processos.
-
-A CLOUDIX AI pode atuar em áreas como:
-
-🛒 Vendas
-📣 Marketing
-💬 Atendimento
-💰 Financeiro
-📊 Estratégia
+Inteligência artificial desenvolvida para ajudar empresas a automatizar processos.
 
 Digite:
-
 *1️⃣* Conhecer a solução
 *2️⃣* Falar com especialista
 *0️⃣* Voltar`;
@@ -57,16 +45,7 @@ function getAutomation() {
 
 Automatize tarefas e processos repetitivos da sua empresa.
 
-Podemos trabalhar com:
-
-🔄 Processos automáticos
-📱 Atendimento
-📊 Organização de dados
-🔔 Notificações
-🤖 Inteligência artificial
-
 Digite:
-
 *2️⃣* Falar com especialista
 *0️⃣* Voltar`;
 }
@@ -74,16 +53,9 @@ Digite:
 function getMarketing() {
   return `📣 *MARKETING & CONTEÚDO*
 
-A CLOUDIX pode ajudar sua empresa a melhorar sua presença digital através de:
-
-📱 Conteúdo para redes sociais
-📅 Planejamento
-🎨 Criativos
-📈 Estratégia
-🤖 Inteligência artificial
+Melhore sua presença digital com IA e estratégias de conteúdo.
 
 Digite:
-
 *2️⃣* Falar com especialista
 *0️⃣* Voltar`;
 }
@@ -91,18 +63,9 @@ Digite:
 function getService() {
   return `💬 *ATENDIMENTO CLOUDIX*
 
-Transforme o atendimento da sua empresa com tecnologia.
-
-Podemos ajudar com:
-
-🤖 Atendimento automatizado
-📱 WhatsApp
-💬 Respostas inteligentes
-📋 Organização de clientes
-🧠 Inteligência artificial
+Transforme o atendimento da sua empresa com WhatsApp automatizado e respostas inteligentes.
 
 Digite:
-
 *2️⃣* Falar com especialista
 *0️⃣* Voltar`;
 }
@@ -120,21 +83,9 @@ Digite seu nome ou *0* para voltar ao menu.`;
 function getSupport() {
   return `🛠️ *SUPORTE CLOUDIX*
 
-Vamos ajudar você.
+Nossa equipe está disponível para ajudar com chamados técnicos.
 
-Envie:
-
-👤 *Seu nome:*
-
-🏢 *Empresa:*
-
-🔧 *Serviço que está utilizando:*
-
-❌ *Descreva o problema:*
-
-Nossa equipe analisará sua solicitação.
-
-Digite *0* para voltar ao menu.`;
+Digite *0* para voltar ao menu principal.`;
 }
 
 function getClosingPrompt() {
@@ -153,47 +104,78 @@ Escolha uma das opções disponíveis ou digite *menu* para voltar ao início.`;
 }
 
 function normalizeText(text) {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
-// Gerenciador do timer de inatividade (15 minutos)
-function resetInactivityTimer(sock, remoteJid) {
-  if (userTimers.has(remoteJid)) {
-    clearTimeout(userTimers.get(remoteJid));
+// --- FUNÇÕES DE BANCO DE DADOS PARA CLIENTES ---
+async function getOrCreateClient(remoteJid, pushName) {
+  let res = await pool.query("SELECT * FROM clients WHERE whatsapp = $1", [remoteJid]);
+  
+  if (res.rows.length === 0) {
+    res = await pool.query(
+      "INSERT INTO clients (whatsapp, nome, step, status) VALUES ($1, $2, $3, $4) RETURNING *",
+      [remoteJid, pushName || "Cliente", "main", "bot"]
+    );
+  } else {
+    await pool.query("UPDATE clients SET last_interaction = NOW() WHERE whatsapp = $1", [remoteJid]);
+  }
+  return res.rows[0];
+}
+
+async function updateClientStep(remoteJid, step, extraData = {}) {
+  const fields = ["step = $2", "last_interaction = NOW()"];
+  const values = [remoteJid, step];
+  let idx = 3;
+
+  if (extraData.nome) {
+    fields.push(`nome = $${idx}`);
+    values.push(extraData.nome);
+    idx++;
+  }
+  if (extraData.empresa) {
+    fields.push(`empresa = $${idx}`);
+    values.push(extraData.empresa);
+    idx++;
+  }
+  if (extraData.status) {
+    fields.push(`status = $${idx}`);
+    values.push(extraData.status);
+    idx++;
   }
 
+  await pool.query(
+    `UPDATE clients SET ${fields.join(", ")} WHERE whatsapp = $1`,
+    values
+  );
+}
+
+// Timer de inatividade (15 minutos)
+function resetInactivityTimer(sock, remoteJid) {
+  if (userTimers.has(remoteJid)) clearTimeout(userTimers.get(remoteJid));
+
   const timer = setTimeout(async () => {
-    const currentState = userStates.get(remoteJid);
-    
-    // Só envia aviso se o usuário ainda estiver interagindo com o bot (fora de human_attending)
-    if (currentState && currentState !== "human_attending") {
-      userStates.set(remoteJid, "check_inactivity");
+    const res = await pool.query("SELECT step, status FROM clients WHERE whatsapp = $1", [remoteJid]);
+    const client = res.rows[0];
+
+    if (client && client.status !== "human_attending") {
+      await updateClientStep(remoteJid, "check_inactivity");
       await sock.sendMessage(remoteJid, {
-        text: `⏳ *ATENDIMENTO INATIVO*
-
-Percebi que você está há um tempo sem responder. Podemos finalizar este atendimento?
-
-*1️⃣* Sim, finalizar
-*2️⃣* Continuar atendimento`
+        text: `⏳ *ATENDIMENTO INATIVO*\n\nPercebi que você está há um tempo sem responder. Podemos finalizar este atendimento?\n\n*1️⃣* Sim, finalizar\n*2️⃣* Continuar atendimento`
       });
     }
     userTimers.delete(remoteJid);
-  }, 15 * 60 * 1000); // 15 Minutos
+  }, 15 * 60 * 1000);
 
   userTimers.set(remoteJid, timer);
 }
 
+// --- HANDLER PRINCIPAL DE MENSAGENS ---
 async function handleMessage(sock, message) {
   try {
-    if (!message.message) return;
-    if (message.key.fromMe) return;
+    if (!message.message || message.key.fromMe) return;
 
     const remoteJid = message.key.remoteJid;
-    if (!remoteJid) return;
+    if (!remoteJid || remoteJid.endsWith("@g.us")) return; // Ignora grupos
 
     const messageContent =
       message.message.conversation ||
@@ -203,54 +185,42 @@ async function handleMessage(sock, message) {
     if (!messageContent) return;
 
     const text = normalizeText(messageContent);
-    console.log(`📩 Mensagem recebida: ${text}`);
+    const pushName = message.pushName;
 
-    // Atualiza o timer de inatividade
-    resetInactivityTimer(sock, remoteJid);
+    // 1. Busca ou cria o cliente no PostgreSQL
+    const client = await getOrCreateClient(remoteJid, pushName);
 
-    let state = userStates.get(remoteJid) || "main";
-    let response;
-
-    // Comandos globais de reinício
-    if (
-      text === "menu" ||
-      text === "inicio" ||
-      text === "comecar" ||
-      text === "oi" ||
-      text === "ola" ||
-      text === "bom dia" ||
-      text === "boa tarde" ||
-      text === "boa noite"
-    ) {
-      userStates.set(remoteJid, "main");
-      response = getMainMenu();
-
-      await sock.sendMessage(remoteJid, { text: response });
-      console.log(`📤 Resposta enviada para ${remoteJid}`);
+    // Se estiver em atendimento humano, o bot não responde
+    if (client.status === "human_attending" && text !== "menu") {
       return;
     }
 
+    resetInactivityTimer(sock, remoteJid);
+
+    let state = client.step || "main";
+    let response;
+
+    // Comandos globais de reinício
+    if (["menu", "inicio", "comecar", "oi", "ola", "bom dia", "boa tarde", "boa noite"].includes(text)) {
+      await updateClientStep(remoteJid, "main", { status: "bot" });
+      response = getMainMenu();
+      await sock.sendMessage(remoteJid, { text: response });
+      return;
+    }
+
+    // --- MÁQUINA DE ESTADOS ---
     if (state === "main") {
       switch (text) {
-        case "1":
-        case "planos":
-        case "plano":
-        case "solucoes":
-        case "solucao":
-          userStates.set(remoteJid, "solutions");
+        case "1": case "solucoes":
+          await updateClientStep(remoteJid, "solutions");
           response = getPlans();
           break;
-        case "2":
-        case "especialista":
-        case "vendedor":
-        case "vendas":
-          userStates.set(remoteJid, "specialist");
+        case "2": case "especialista":
+          await updateClientStep(remoteJid, "specialist");
           response = getSpecialist();
           break;
-        case "3":
-        case "suporte":
-        case "ajuda":
-          userStates.set(remoteJid, "support");
+        case "3": case "suporte":
+          await updateClientStep(remoteJid, "support");
           response = getSupport();
           break;
         default:
@@ -259,248 +229,82 @@ async function handleMessage(sock, message) {
     } else if (state === "solutions") {
       switch (text) {
         case "1":
-        case "cloudix ai":
-        case "ia":
-        case "inteligencia artificial":
-          userStates.set(remoteJid, "cloudix_ai");
+          await updateClientStep(remoteJid, "cloudix_ai");
           response = getCloudixAI();
           break;
         case "2":
-        case "automacao":
-          userStates.set(remoteJid, "automation");
+          await updateClientStep(remoteJid, "automation");
           response = getAutomation();
           break;
         case "3":
-        case "marketing":
-        case "conteudo":
-          userStates.set(remoteJid, "marketing");
+          await updateClientStep(remoteJid, "marketing");
           response = getMarketing();
           break;
         case "4":
-        case "atendimento":
-          userStates.set(remoteJid, "service");
+          await updateClientStep(remoteJid, "service");
           response = getService();
           break;
         case "0":
-        case "voltar":
-          userStates.set(remoteJid, "main");
+          await updateClientStep(remoteJid, "main");
           response = getMainMenu();
           break;
         default:
           response = getPlans();
       }
-    } else if (state === "cloudix_ai") {
-      switch (text) {
-        case "1":
-          response = `🚀 *CLOUDIX AI*
-
-A CLOUDIX pode desenvolver uma solução de inteligência artificial personalizada para sua empresa.
-
-Para entender o que sua empresa precisa, vamos encaminhar você para um especialista.
-
-Digite *2* para falar com um especialista.
-
-Digite *0* para voltar às soluções.`;
-          break;
-        case "2":
-          userStates.set(remoteJid, "specialist");
-          response = getSpecialist();
-          break;
-        case "0":
-          userStates.set(remoteJid, "solutions");
-          response = getPlans();
-          break;
-        default:
-          response = getCloudixAI();
-      }
-    } else if (
-      state === "automation" ||
-      state === "marketing" ||
-      state === "service"
-    ) {
-      switch (text) {
-        case "2":
-        case "especialista":
-          userStates.set(remoteJid, "specialist");
-          response = getSpecialist();
-          break;
-        case "0":
-        case "voltar":
-          userStates.set(remoteJid, "solutions");
-          response = getPlans();
-          break;
-        default:
-          if (state === "automation") {
-            response = getAutomation();
-          } else if (state === "marketing") {
-            response = getMarketing();
-          } else {
-            response = getService();
-          }
+    } else if (["automation", "marketing", "service", "cloudix_ai"].includes(state)) {
+      if (text === "2") {
+        await updateClientStep(remoteJid, "specialist");
+        response = getSpecialist();
+      } else if (text === "0") {
+        await updateClientStep(remoteJid, "solutions");
+        response = getPlans();
+      } else {
+        response = getUnknownOption();
       }
     } else if (state === "specialist") {
-      if (text === "0" || text === "voltar") {
-        userStates.set(remoteJid, "main");
-        userLeads.delete(remoteJid);
+      if (text === "0") {
+        await updateClientStep(remoteJid, "main");
         response = getMainMenu();
       } else {
-        userLeads.set(remoteJid, { name: messageContent });
-        userStates.set(remoteJid, "specialist_company");
-        response = `🏢 *PERFEITO!*
-
-Agora, qual é o nome da sua empresa?
-
-Digite o nome da empresa ou *0* para voltar ao menu.`;
+        await updateClientStep(remoteJid, "specialist_company", { nome: messageContent });
+        response = `🏢 *PERFEITO!*\n\nAgora, qual é o nome da sua empresa?\n\nDigite o nome da empresa ou *0* para voltar ao menu.`;
       }
     } else if (state === "specialist_company") {
-      if (text === "0" || text === "voltar") {
-        userStates.set(remoteJid, "main");
-        userLeads.delete(remoteJid);
+      if (text === "0") {
+        await updateClientStep(remoteJid, "main");
         response = getMainMenu();
       } else {
-        const lead = userLeads.get(remoteJid);
-        lead.company = messageContent;
-        userLeads.set(remoteJid, lead);
-        userStates.set(remoteJid, "specialist_need");
-        response = `🎯 *ÓTIMO!*
-
-Agora conte para nós:
-
-*O que você está procurando ou qual problema sua empresa gostaria de resolver?*
-
-Pode explicar com suas próprias palavras.
-
-Digite *0* para voltar ao menu.`;
+        await updateClientStep(remoteJid, "specialist_need", { empresa: messageContent });
+        response = `🎯 *ÓTIMO!*\n\nConte para nós: o que você gostaria de resolver em sua empresa?\n\nDigite *0* para voltar ao menu.`;
       }
     } else if (state === "specialist_need") {
-      if (text === "0" || text === "voltar") {
-        userStates.set(remoteJid, "main");
-        userLeads.delete(remoteJid);
+      if (text === "0") {
+        await updateClientStep(remoteJid, "main");
         response = getMainMenu();
       } else {
-        const lead = userLeads.get(remoteJid);
-        lead.need = messageContent;
-        userLeads.set(remoteJid, lead);
-        userStates.set(remoteJid, "specialist_confirmation");
-        response = `📋 *CONFIRA SEUS DADOS*
+        // Registra o lead diretamente no banco
+        await pool.query(
+          `INSERT INTO leads (whatsapp, nome, empresa, necessidade, status) VALUES ($1, $2, $3, $4, 'novo')`,
+          [remoteJid, client.nome, client.empresa, messageContent]
+        );
 
-👤 *Nome:* ${lead.name}
+        await updateClientStep(remoteJid, "human_attending", { status: "human_attending" });
 
-🏢 *Empresa:* ${lead.company}
-
-🎯 *Interesse:* ${lead.need}
-
-Está tudo correto?
-
-*1️⃣* Confirmar
-*2️⃣* Corrigir
-*0️⃣* Voltar ao menu`;
-      }
-    } else if (state === "specialist_confirmation") {
-      if (text === "1" || text === "confirmar") {
-        const lead = userLeads.get(remoteJid);
-        try {
-          await pool.query(
-            `
-            INSERT INTO leads (whatsapp, nome, empresa, necessidade, status)
-            VALUES ($1, $2, $3, $4, $5)
-            `,
-            [remoteJid, lead.name, lead.company, lead.need, "novo"]
-          );
-
-          console.log("📋 NOVO LEAD SALVO NO BANCO:");
-          console.log(`👤 Nome: ${lead.name}`);
-          console.log(`🏢 Empresa: ${lead.company}`);
-          console.log(`🎯 Interesse: ${lead.need}`);
-
-          response = `✅ *LEAD REGISTRADO!*
-
-Obrigado pelas informações, ${lead.name}! 🚀
-
-Recebemos sua solicitação.
-
-Um especialista da *CLOUDIX* poderá entrar em contato para entender melhor sua necessidade.
-
-Até breve! 🤝
-
-Digite *menu* se quiser iniciar um novo atendimento.`;
-
-          userStates.set(remoteJid, "human_attending");
-          userLeads.delete(remoteJid);
-        } catch (error) {
-          console.error("❌ ERRO AO SALVAR LEAD NO BANCO:", error);
-          response = `⚠️ *NÃO CONSEGUIMOS REGISTRAR SEUS DADOS*
-
-Ocorreu um problema temporário ao registrar sua solicitação.
-
-Por favor, tente novamente em alguns instantes.`;
-        }
-      } else if (text === "2" || text === "corrigir") {
-        userStates.set(remoteJid, "specialist");
-        userLeads.delete(remoteJid);
-        response = `🔄 *VAMOS CORRIGIR*
-
-Sem problemas!
-
-👤 Qual é o seu nome?`;
-      } else if (text === "0" || text === "voltar") {
-        userStates.set(remoteJid, "main");
-        userLeads.delete(remoteJid);
-        response = getMainMenu();
-      } else {
-        response = `🤔 Escolha uma opção:
-
-*1️⃣* Confirmar
-*2️⃣* Corrigir
-*0️⃣* Voltar ao menu`;
-      }
-    } else if (state === "support") {
-      if (text === "0" || text === "voltar") {
-        userStates.set(remoteJid, "main");
-        response = getMainMenu();
-      } else {
-        response = `🛠️ *SOLICITAÇÃO RECEBIDA*
-
-Obrigado pelas informações.
-
-Nossa equipe de suporte poderá analisar seu caso.
-
-Digite *0* para voltar ao menu.`;
+        response = `✅ *SOLICITAÇÃO REGISTRADA!*\n\nObrigado pelas informações, *${client.nome}*! 🚀\n\nUm especialista entrará em contato em breve.\n\nDigite *menu* se quiser reiniciar o atendimento.`;
       }
     } else if (state === "check_inactivity") {
-      if (text === "1" || text === "sim" || text === "finalizar") {
-        userStates.delete(remoteJid);
-        if (userTimers.has(remoteJid)) clearTimeout(userTimers.get(remoteJid));
-        response = "✅ *Atendimento finalizado!* Qualquer dúvida, basta nos chamar novamente. Tenha um excelente dia! 🚀";
+      if (["1", "sim", "finalizar"].includes(text)) {
+        await updateClientStep(remoteJid, "main");
+        response = "✅ *Atendimento finalizado!* Qualquer dúvida, basta nos chamar novamente. 🚀";
       } else {
-        userStates.set(remoteJid, "main");
+        await updateClientStep(remoteJid, "main");
         response = getMainMenu();
       }
-    } else if (state === "closing_confirmation") {
-      if (text === "1" || text === "sim" || text === "finalizar") {
-        userStates.delete(remoteJid);
-        if (userTimers.has(remoteJid)) clearTimeout(userTimers.get(remoteJid));
-        response = "✅ *Atendimento finalizado com sucesso!* A equipe Cloudix agradece. Até a próxima! 👋";
-      } else {
-        userStates.set(remoteJid, "main");
-        response = getMainMenu();
-      }
-    } else if (state === "human_attending") {
-      return;
-    } else if (
-      text === "obrigado" ||
-      text === "obrigada" ||
-      text === "valeu" ||
-      text === "vlw"
-    ) {
-      userStates.set(remoteJid, "closing_confirmation");
-      response = getClosingPrompt();
     } else {
       response = getUnknownOption();
     }
 
     await sock.sendMessage(remoteJid, { text: response });
-    console.log(`📤 Resposta enviada para ${remoteJid}`);
   } catch (error) {
     console.error("❌ Erro ao processar mensagem:", error);
   }

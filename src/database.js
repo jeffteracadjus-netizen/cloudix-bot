@@ -6,15 +6,27 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Inicialização e verificação de tabelas
 async function initDb() {
   try {
     await pool.query(`
+      -- Sessões do WhatsApp (Baileys)
       CREATE TABLE IF NOT EXISTS whatsapp_sessions (
         id VARCHAR(255) PRIMARY KEY,
         data TEXT NOT NULL
       );
 
+      -- Cadastro de Clientes e Estado das Conversas
+      CREATE TABLE IF NOT EXISTS clients (
+        id SERIAL PRIMARY KEY,
+        whatsapp VARCHAR(255) UNIQUE NOT NULL,
+        nome VARCHAR(255),
+        empresa VARCHAR(255),
+        step VARCHAR(50) DEFAULT 'main',
+        status VARCHAR(50) DEFAULT 'bot', -- 'bot' ou 'human_attending'
+        last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Leads confirmados pelo fluxo do especialista
       CREATE TABLE IF NOT EXISTS leads (
         id SERIAL PRIMARY KEY,
         whatsapp VARCHAR(255),
