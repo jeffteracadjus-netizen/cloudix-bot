@@ -1,6 +1,5 @@
 const { default: makeWASocket, DisconnectReason, initAuthCreds, BufferJSON, proto } = require("@whiskeysockets/baileys");
 const P = require("pino");
-const QRCode = require("qrcode");
 const { handleMessage } = require("./bot");
 const { pool } = require("./database");
 
@@ -96,19 +95,32 @@ async function startWhatsApp() {
     });
 
     sock.ev.on("connection.update", async (update) => {
-  const { connection, lastDisconnect, qr } = update;
+      const { connection, lastDisconnect, qr } = update;
 
-  if (qr) currentQR = qr;
+      if (qr) currentQR = qr;
 
-  if (connection === "open") {
-    currentQR = null;
-    console.log("✅ WHATSAPP CONECTADO E BOT ONLINE!");
+      if (connection === "open") {
+        currentQR = null;
+        console.log("✅ WHATSAPP CONECTADO E BOT ONLINE!");
+      }
+
+      if (connection === "close") {
+        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        if (shouldReconnect) {
+          setTimeout(startWhatsApp, 3000);
+        }
+      }
+    });
+
+    return sock;
+  } catch (error) {
+    console.error("❌ Erro ao iniciar WhatsApp:", error);
+    setTimeout(startWhatsApp, 5000);
   }
+}
 
-  if (connection === "close") {
-    const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-    if (shouldReconnect) {
-      setTimeout(startWhatsApp, 3000);
-    }
-  }
-});
+function getQRCode() {
+  return currentQR;
+}
+
+module.exports = { startWhatsApp, getQRCode };
