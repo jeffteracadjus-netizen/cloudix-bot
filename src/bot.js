@@ -88,15 +88,6 @@ Nossa equipe está disponível para ajudar com chamados técnicos.
 Digite *0* para voltar ao menu principal.`;
 }
 
-function getClosingPrompt() {
-  return `😊 Por nada! Ficamos felizes em ajudar.
-
-Deseja finalizar este atendimento?
-
-*1️⃣* Sim, finalizar atendimento
-*2️⃣* Não, voltar ao menu principal`;
-}
-
 function getUnknownOption() {
   return `🤔 Não consegui identificar essa opção.
 
@@ -190,7 +181,16 @@ async function handleMessage(sock, message) {
     // 1. Busca ou cria o cliente no PostgreSQL
     const client = await getOrCreateClient(remoteJid, pushName);
 
-    // Se estiver em atendimento humano, o bot não responde
+    // --- COMANDO DE DESBLOQUEIO / FINALIZAÇÃO HUMANA ---
+    if (text === "#finalizar" || text === "#bot" || text === "#reset") {
+      await updateClientStep(remoteJid, "main", { status: "bot" });
+      await sock.sendMessage(remoteJid, {
+        text: "👨‍💻 *Atendimento humano finalizado.*\n\nO assistente virtual da *CLOUDIX* está ativo novamente. Digite *menu* se precisar de algo!"
+      });
+      return;
+    }
+
+    // Se estiver em atendimento humano, o bot não responde a outras mensagens
     if (client.status === "human_attending" && text !== "menu") {
       return;
     }
