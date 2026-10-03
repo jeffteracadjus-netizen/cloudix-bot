@@ -2,6 +2,23 @@ const { pool } = require("./database");
 
 const userTimers = new Map(); // Timers temporários de inatividade
 
+// --- HELPER DE HORÁRIO COMERCIAL (UTC-3 BRASÍLIA) ---
+function isBusinessHours() {
+  const now = new Date();
+  // Converte para fuso horário do Brasil (UTC-3)
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const brTime = new Date(utc + (3600000 * -3));
+
+  const day = brTime.getDay(); // 0 = Domingo, 6 = Sábado, 1-5 = Seg-Sex
+  const hour = brTime.getHours();
+
+  // Segunda a Sexta (1 a 5), das 08:00 às 17:59 (08h às 18h)
+  const isWeekday = day >= 1 && day <= 5;
+  const isWorkingHour = hour >= 8 && hour < 18;
+
+  return isWeekday && isWorkingHour;
+}
+
 // --- MENSAGENS DE MENU ---
 function getMainMenu() {
   return `👋 Olá! Seja bem-vindo à *CLOUDIX*.
@@ -308,7 +325,13 @@ async function handleMessage(sock, message) {
           }
         }
 
-        response = `✅ *SOLICITAÇÃO REGISTRADA!*\n\nObrigado pelas informações, *${client.nome}*! 🚀\n\nUm especialista entrará em contato em breve.\n\nDigite *menu* se quiser reiniciar o atendimento.`;
+        // --- VERIFICAÇÃO DE HORÁRIO COMERCIAL ---
+        const openNow = isBusinessHours();
+        if (openNow) {
+          response = `✅ *SOLICITAÇÃO REGISTRADA!*\n\nObrigado pelas informações, *${client.nome}*! 🚀\n\nUm especialista entrará em contato em breve.\n\nDigite *menu* se quiser reiniciar o atendimento.`;
+        } else {
+          response = `🌙 *SOLICITAÇÃO REGISTRADA (FORA DO EXPEDIENTE)*\n\nObrigado pelas informações, *${client.nome}*! 🚀\n\nRecebemos sua mensagem fora do nosso horário de atendimento (Segunda a Sexta, das 08h às 18h).\n\nNossa equipe entrará em contato logo no início do próximo dia útil! 🤝\n\nDigite *menu* se quiser reiniciar o atendimento.`;
+        }
       }
     } else if (state === "check_inactivity") {
       if (["1", "sim", "finalizar"].includes(text)) {
