@@ -290,6 +290,24 @@ async function handleMessage(sock, message) {
 
         await updateClientStep(remoteJid, "human_attending", { status: "human_attending" });
 
+        // --- NOTIFICAÇÃO AUTOMÁTICA PARA A EQUIPA DE VENDAS ---
+        const notificationTarget = process.env.NOTIFICATION_NUMBER;
+        if (notificationTarget) {
+          const cleanPhone = remoteJid.replace("@s.whatsapp.net", "").replace("@lid", "");
+          const leadAlert = `🚨 *NOVO LEAD CAPTURADO!* 🚨\n\n` +
+            `👤 *Nome:* ${client.nome}\n` +
+            `🏢 *Empresa:* ${client.empresa}\n` +
+            `🎯 *Necessidade:* ${messageContent}\n` +
+            `📱 *Contacto:* wa.me/${cleanPhone}\n\n` +
+            `⚡ *Status:* Aguardando atendimento humano.`;
+
+          try {
+            await sock.sendMessage(notificationTarget, { text: leadAlert });
+          } catch (err) {
+            console.error("❌ Erro ao enviar notificação de lead:", err);
+          }
+        }
+
         response = `✅ *SOLICITAÇÃO REGISTRADA!*\n\nObrigado pelas informações, *${client.nome}*! 🚀\n\nUm especialista entrará em contato em breve.\n\nDigite *menu* se quiser reiniciar o atendimento.`;
       }
     } else if (state === "check_inactivity") {
